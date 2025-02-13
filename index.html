@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Catur</title>
+    <style>
+        body {
+            text-align: center;
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            color: white;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+        .chessboard {
+            display: grid;
+            grid-template-columns: repeat(8, 80px);
+            grid-template-rows: repeat(8, 80px);
+            border: 5px solid #333;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
+        }
+        .square {
+            width: 80px;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            position: relative;
+        }
+        .dark {
+            background-color: #b58863;
+        }
+        .light {
+            background-color: #f0d9b5;
+        }
+        .piece {
+            cursor: pointer;
+        }
+        .highlight {
+            background-color: rgba(0, 255, 0, 0.5) !important;
+        }
+        .captured-pieces {
+            display: flex;
+            margin-top: 20px;
+            justify-content: center;
+            width: 100%;
+        }
+        .captured {
+            width: 150px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+    <h1>Game Catur</h1>
+    <div id="timer">Waktu: 5:00</div>
+    <div class="chessboard" id="chessboard"></div>
+
+    <div class="captured-pieces">
+        <div id="playerCaptured" class="captured">
+            <h3>Bidak Dimakan Musuh</h3>
+            <div id="playerCapturedPieces"></div>
+        </div>
+        <div id="enemyCaptured" class="captured">
+            <h3>Bidak Dimakan Kita</h3>
+            <div id="enemyCapturedPieces"></div>
+        </div>
+    </div>
+
+    <script>
+        const board = document.getElementById("chessboard");
+        const timerElement = document.getElementById("timer");
+        let selectedPiece = null;
+        let selectedSquare = null;
+        let isPlayerTurn = true;
+        let timeLeft = 300;
+        let botTimeLeft = 300;
+        let gameInterval;
+
+        const pieces = {
+            'pawn': '♙', 'rook': '♖', 'knight': '♘', 'bishop': '♗', 'queen': '♕', 'king': '♔',
+            'pawn_black': '♟', 'rook_black': '♜', 'knight_black': '♞', 'bishop_black': '♝', 'queen_black': '♛', 'king_black': '♚'
+        };
+
+        let playerCaptured = [];
+        let enemyCaptured = [];
+
+        function createBoard() {
+            const layout = [
+                ['rook_black', 'knight_black', 'bishop_black', 'queen_black', 'king_black', 'bishop_black', 'knight_black', 'rook_black'],
+                ['pawn_black', 'pawn_black', 'pawn_black', 'pawn_black', 'pawn_black', 'pawn_black', 'pawn_black', 'pawn_black'],
+                ['', '', '', '', '', '', '', ''],
+                ['', '', '', '', '', '', '', ''],
+                ['', '', '', '', '', '', '', ''],
+                ['', '', '', '', '', '', '', ''],
+                ['pawn', 'pawn', 'pawn', 'pawn', 'pawn', 'pawn', 'pawn', 'pawn'],
+                ['rook', 'knight', 'bishop', 'queen', 'king', 'bishop', 'knight', 'rook']
+            ];
+
+            board.innerHTML = "";
+            for (let i = 0; i < 8; i++) {
+                for (let j = 0; j < 8; j++) {
+                    const square = document.createElement("div");
+                    square.classList.add("square", (i + j) % 2 === 0 ? "light" : "dark");
+                    square.dataset.row = i;
+                    square.dataset.col = j;
+                    square.addEventListener("click", handleMove);
+
+                    if (layout[i][j]) {
+                        const piece = document.createElement("div");
+                        piece.classList.add("piece");
+                        piece.innerHTML = pieces[layout[i][j]];
+                        square.appendChild(piece);
+                    }
+                    board.appendChild(square);
+                }
+            }
+        }
+
+        function handleMove(event) {
+            if (!isPlayerTurn) return;
+            const square = event.currentTarget;
+            const piece = square.querySelector(".piece");
+            
+            if (piece && piece.innerHTML === '♙') { // Only allow player to move their pieces
+                resetHighlights();
+                selectedPiece = piece;
+                selectedSquare = square;
+                highlightMoves(square);
+            } else if (selectedPiece) {
+                if (square.classList.contains("highlight")) {
+                    const targetPiece = square.querySelector(".piece");
+                    if (targetPiece && targetPiece.innerHTML !== '♙' && targetPiece.innerHTML !== '♟') { // Ignore if no piece to capture
+                        resetHighlights();
+                        selectedPiece = null;
+                        isPlayerTurn = false;
+                        return;
+                    }
+                    
+                    // If there's a piece to capture, remove it
+                    if (targetPiece) {
+                        capturePiece(targetPiece);
+                    }
+
+                    selectedSquare.innerHTML = "";
+                    square.appendChild(selectedPiece);
+                    resetHighlights();
+                    selectedPiece = null;
+                    isPlayerTurn = false;
+                    setTimeout(botMove, 1000);
+                }
+            }
+        }
+
+        function capturePiece(piece) {
+            const pieceValue = piece.innerHTML;
+            if (pieceValue === '♟') {
+                enemyCaptured.push(pieceValue);
+                document.getElementById("enemyCapturedPieces").innerHTML = enemyCaptured.join(" ");
+            } else if (pieceValue === '♙') {
+                playerCaptured.push(pieceValue);
+                document.getElementById("playerCapturedPieces").innerHTML = playerCaptured.join(" ");
+            }
+            piece.parentElement.innerHTML = "";
+        }
+
+        function highlightMoves(square) {
+            const row = parseInt(square.dataset.row);
+            const col = parseInt(square.dataset.col);
+            if (selectedPiece.innerHTML === '♙') { // Pawn can move forward 1 or 2 spaces at the start
+                if (row === 6) { // Starting position
+                    for (let i = 1; i <= 2; i++) {
+                        const newSquare = document.querySelector(`[data-row='${row - i}'][data-col='${col}']`);
+                        if (newSquare && !newSquare.querySelector(".piece")) {
+                            newSquare.classList.add("highlight");
+                        } else {
+                            break;
+                        }
+                    }
+                } else { // Regular move
+                    const newSquare = document.querySelector(`[data-row='${row - 1}'][data-col='${col}']`);
+                    if (newSquare && !newSquare.querySelector(".piece")) {
+                        newSquare.classList.add("highlight");
+                    }
+                }
+                // Check for capture
+                const captureLeft = document.querySelector(`[data-row='${row - 1}'][data-col='${col - 1}']`);
+                const captureRight = document.querySelector(`[data-row='${row - 1}'][data-col='${col + 1}']`);
+                if (captureLeft && captureLeft.querySelector(".piece") && captureLeft.querySelector(".piece").innerHTML === '♟') {
+                    captureLeft.classList.add("highlight");
+                }
+                if (captureRight && captureRight.querySelector(".piece") && captureRight.querySelector(".piece").innerHTML === '♟') {
+                    captureRight.classList.add("highlight");
+                }
+            }
+        }
+
+        function resetHighlights() {
+            document.querySelectorAll(".highlight").forEach(sq => sq.classList.remove("highlight"));
+        }
+
+        function botMove() {
+            const pieces = Array.from(document.querySelectorAll(".piece"));
+            const botPieces = pieces.filter(piece => piece.innerHTML === '♟');
+            if (botPieces.length === 0) return;
+
+            const selectedBotPiece = botPieces[Math.floor(Math.random() * botPieces.length)];
+            const parentSquare = selectedBotPiece.parentElement;
+            const botRow = parseInt(parentSquare.dataset.row);
+            const botCol = parseInt(parentSquare.dataset.col);
+            const newSquare = document.querySelector(`[data-row='${botRow + 1}'][data-col='${botCol}']`);
+
+            if (newSquare && !newSquare.querySelector(".piece")) {
+                parentSquare.innerHTML = "";
+                newSquare.appendChild(selectedBotPiece);
+            }
+            isPlayerTurn = true;
+        }
+
+        function startTimer() {
+            gameInterval = setInterval(() => {
+                if (isPlayerTurn) {
+                    timeLeft--;
+                } else {
+                    botTimeLeft--;
+                }
+                timerElement.textContent = `Waktu: ${Math.floor(timeLeft / 60)}:${(timeLeft % 60).toString().padStart(2, '0')}`;
+            }, 1000);
+        }
+
+        createBoard();
+        startTimer();
+    </script>
+</body>
+</html>
